@@ -68,6 +68,21 @@ const marketsList = grid.set(3, 0, 9, 3, blessed.list, {
   keys: true,
   vi: true,
   mouse: true,
+  interactive: true,
+  invertSelected: true,
+  scrollable: true,
+  keyable: true,
+  focusable: true,
+  inputOnFocus: true,
+  scrollbar: {
+    ch: ' ',
+    track: {
+      bg: 'blue'
+    },
+    style: {
+      inverse: true
+    }
+  },
   style: {
     fg: 'white',
     bg: 'black',
@@ -78,6 +93,11 @@ const marketsList = grid.set(3, 0, 9, 3, blessed.list, {
       bg: 'blue',
       fg: 'white',
       bold: true
+    },
+    item: {
+      hover: {
+        bg: 'gray'
+      }
     }
   },
   border: {
@@ -262,4 +282,30 @@ marketsList.on('select', function(item, index) {
 
 // Initialize
 populateMarketsList();
+
+// Ensure markets list has focus
+marketsList.focus();
+
+// Add explicit key handlers for up/down
+screen.key(['up'], function() {
+  if (marketsList.selected > 0) {
+    marketsList.select(marketsList.selected - 1);
+    screen.render();
+  }
+});
+
+screen.key(['down'], function() {
+  if (marketsList.selected < marketsList.items.length - 1) {
+    marketsList.select(marketsList.selected + 1);
+    screen.render();
+  }
+});
+
+// Also handle enter directly
+screen.key(['enter'], function() {
+  if (marketsList.selected >= 0 && marketsList.selected < sampleContracts.length) {
+    updateContractDetails(marketsList.selected);
+  }
+});
+
 screen.render();
