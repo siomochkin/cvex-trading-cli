@@ -474,13 +474,15 @@ blessed.text({
   left: 2
 });
 
-const tifSelect = blessed.select({
+const tifSelect = blessed.list({
   parent: orderFormBox,
   top: 10,
   left: 15,
   width: 20,
   height: 4,
   border: 'line',
+  mouse: true,
+  keys: true,
   style: {
     bg: 'black',
     fg: 'white',
@@ -611,7 +613,7 @@ quantityInput.on('submit', function(text) {
 });
 
 tifSelect.on('select', function(item, index) {
-  state.orderForm.timeInForce = item.content;
+  state.orderForm.timeInForce = item;
 });
 
 reduceOnlyCheckbox.on('check', function() {
