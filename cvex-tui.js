@@ -120,6 +120,10 @@ const contractDetails = grid.set(3, 3, 4, 9, blessed.box, {
   border: {
     type: 'line'
   },
+  padding: {
+    left: 1,
+    right: 1
+  },
   content: 'Select a contract to view details'
 });
 
@@ -138,6 +142,16 @@ const orderBook = grid.set(7, 3, 5, 4, blessed.box, {
   border: {
     type: 'line'
   },
+  padding: {
+    left: 1,
+    right: 1
+  },
+  scrollable: true,
+  alwaysScroll: true,
+  scrollbar: {
+    ch: ' ',
+    style: { bg: 'blue' }
+  },
   content: 'Select a contract to view order book'
 });
 
@@ -155,6 +169,16 @@ const recentTrades = grid.set(7, 7, 5, 5, blessed.box, {
   },
   border: {
     type: 'line'
+  },
+  padding: {
+    left: 1,
+    right: 1
+  },
+  scrollable: true,
+  alwaysScroll: true,
+  scrollbar: {
+    ch: ' ',
+    style: { bg: 'blue' }
   },
   content: 'Select a contract to view recent trades'
 });
@@ -209,44 +233,82 @@ function updateContractDetails(index) {
     `{bold}24h Volume:{/bold} ${formatNumber(contract.volume_24h)}\n`
   );
   
-  // Generate sample order book
+  // Generate sample order book with columnar layout
   const basePrice = contract.mark_price;
+  
+  // Define column widths
+  const priceWidth = 14;
+  const qtyWidth = 8;
+  const valueWidth = 14;
+  
+  // Create header
   let orderBookContent = '{bold}{red-fg}SELL ORDERS{/red-fg}{/bold}\n';
+  orderBookContent += '{bold}' + 
+    'Price'.padEnd(priceWidth) + 
+    'Quantity'.padEnd(qtyWidth) + 
+    'Value'.padEnd(valueWidth) + 
+    '{/bold}\n';
   
   // Ask prices (higher than base)
   for (let i = 5; i > 0; i--) {
     const price = basePrice * (1 + i * 0.001);
     const quantity = Math.floor(Math.random() * 20) + 1;
-    orderBookContent += `{red-fg}${formatNumber(price)}{/red-fg} | ${quantity} | ${formatNumber(price * quantity)}\n`;
+    const value = price * quantity;
+    
+    orderBookContent += 
+      `{red-fg}${formatNumber(price).padEnd(priceWidth)}{/red-fg}` + 
+      `${quantity.toString().padEnd(qtyWidth)}` +
+      `${formatNumber(value).padEnd(valueWidth)}\n`;
   }
   
-  orderBookContent += '{bold}------------------------{/bold}\n';
+  orderBookContent += '{bold}' + '─'.repeat(priceWidth + qtyWidth + valueWidth) + '{/bold}\n';
   
   // Bid prices (lower than base)
   for (let i = 0; i < 5; i++) {
     const price = basePrice * (1 - i * 0.001);
     const quantity = Math.floor(Math.random() * 20) + 1;
-    orderBookContent += `{green-fg}${formatNumber(price)}{/green-fg} | ${quantity} | ${formatNumber(price * quantity)}\n`;
+    const value = price * quantity;
+    
+    orderBookContent += 
+      `{green-fg}${formatNumber(price).padEnd(priceWidth)}{/green-fg}` + 
+      `${quantity.toString().padEnd(qtyWidth)}` +
+      `${formatNumber(value).padEnd(valueWidth)}\n`;
   }
   
   orderBookContent += '{bold}{green-fg}BUY ORDERS{/green-fg}{/bold}';
   orderBook.setContent(orderBookContent);
   
-  // Generate sample trades
-  let tradesContent = '{bold}RECENT TRADES{/bold}\n';
-  tradesContent += '{bold}Time | Price | Side | Amount{/bold}\n';
+  // Generate sample trades with columnar layout
+  // Define column widths
+  const timeWidth = 10;
+  const tradePriceWidth = 14;
+  const sideWidth = 6;
+  const amountWidth = 8;
   
-  for (let i = 0; i < 5; i++) {
+  let tradesContent = '{bold}RECENT TRADES{/bold}\n';
+  tradesContent += '{bold}' + 
+    'Time'.padEnd(timeWidth) + 
+    'Price'.padEnd(tradePriceWidth) + 
+    'Side'.padEnd(sideWidth) + 
+    'Amount'.padEnd(amountWidth) + 
+    '{/bold}\n';
+  
+  for (let i = 0; i < 7; i++) {
     const time = new Date();
     time.setMinutes(time.getMinutes() - i * 5);
-    const timeStr = time.toLocaleTimeString();
+    const timeStr = time.toLocaleTimeString().slice(0, 8); // HH:MM:SS
     
     const price = basePrice * (1 + (Math.random() * 0.01 - 0.005));
     const side = Math.random() > 0.5 ? 'BUY' : 'SELL';
     const amount = Math.floor(Math.random() * 10) + 1;
     
     const color = side === 'BUY' ? 'green-fg' : 'red-fg';
-    tradesContent += `${timeStr} | ${formatNumber(price)} | {${color}}${side}{/${color}} | ${amount}\n`;
+    tradesContent += 
+      timeStr.padEnd(timeWidth) + 
+      formatNumber(price).padEnd(tradePriceWidth) + 
+      `{${color}}${side.padEnd(sideWidth)}{/${color}}` + 
+      amount.toString().padEnd(amountWidth) + 
+      '\n';
   }
   
   recentTrades.setContent(tradesContent);
