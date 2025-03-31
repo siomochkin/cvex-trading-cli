@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // cvex-tui.js - Text-based User Interface for CVEX Trading API
-const blessed = require('blessed');
+const blessed = require('neo-blessed');
 const contrib = require('blessed-contrib');
 const { loadConfig, saveConfig, getConfig } = require('./actions/config');
 const { listContracts, getContractDetails, getMarketData } = require('./actions/markets');
@@ -19,14 +19,27 @@ try {
 
 console.log('Initializing CVEX Trading Terminal...');
 
-// Create a screen object
+// Create a screen object with safer defaults
 const screen = blessed.screen({
   smartCSR: true,
   title: 'CVEX Trading Terminal',
   dockBorders: true,
   fullUnicode: true,
-  debug: true,
-  log: true
+  autoPadding: true,
+  warnings: true
+});
+
+// Handle exit and errors
+process.on('exit', () => {
+  // No need to call screen leave - let process exit do the cleanup
+  console.log('Exiting CVEX Terminal');
+});
+
+// Handle uncaught exceptions more gracefully
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  // Just exit without trying to restore screen
+  process.exit(1);
 });
 
 console.log('Screen created successfully');
@@ -682,15 +695,27 @@ saveButton.on('press', function() {
 
 // Key bindings
 screen.key(['escape', 'q', 'C-c'], function() {
-  return process.exit(0);
+  // Clean exit
+  console.log('User requested exit');
+  process.exit(0);
 });
 
 screen.key(['tab'], function() {
-  screen.focusNext();
+  try {
+    screen.focusNext();
+    screen.render();
+  } catch (error) {
+    console.error('Error focusing next element:', error);
+  }
 });
 
 screen.key(['S-tab'], function() {
-  screen.focusPrevious();
+  try {
+    screen.focusPrevious();
+    screen.render();
+  } catch (error) {
+    console.error('Error focusing previous element:', error);
+  }
 });
 
 // Functions

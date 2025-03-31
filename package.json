@@ -21,7 +21,8 @@
         "axios": "^1.8.2",
         "blessed": "^0.1.81",
         "blessed-contrib": "^4.11.0",
-        "commander": "^11.1.0"
+        "commander": "^11.1.0",
+        "neo-blessed": "^0.2.0"
     },
     "bin": {
         "cvex": "./cvex",
