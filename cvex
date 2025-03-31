@@ -1,3 +1,10 @@
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-node "$DIR/cvex-cli.js" "$@"
+
+# Check if we should use TUI or CLI version
+if [[ "$1" == "--tui" ]]; then
+    shift  # Remove the --tui argument
+    node "$DIR/cvex-tui.js" "$@"
+else
+    node "$DIR/cvex-cli.js" "$@"
+fi

@@ -1,6 +1,6 @@
-# CVEX Trading CLI
+# CVEX Trading Terminal
 
-A command-line interface for interacting with the CVEX Trading API.
+A trading interface for interacting with the CVEX Trading API, supporting both CLI (Command Line Interface) and TUI (Text-based User Interface) modes.
 
 ## Features
 
@@ -12,6 +12,7 @@ A command-line interface for interacting with the CVEX Trading API.
 - Interactive trading interface for both buying and selling
 - Order estimation before placement
 - Support for market and limit orders
+- TUI mode with intuitive navigation and real-time market data
 
 ## Installation
 
@@ -46,25 +47,27 @@ Configuration is stored in `~/.cvex-cli/config.json`.
 
 ## Usage
 
-### List Available Markets
+### Command Line Interface (CLI)
+
+#### List Available Markets
 
 ```
 ./cvex-cli.js markets
 ```
 
-### Get Contract Details
+#### Get Contract Details
 
 ```
 ./cvex-cli.js contract <contract_id>
 ```
 
-### View Account Information
+#### View Account Information
 
 ```
 ./cvex-cli.js account
 ```
 
-### Interactive Trading
+#### Interactive Trading
 
 ```
 ./cvex-cli.js trade
@@ -76,6 +79,26 @@ This will guide you through:
 3. Setting order parameters (type, price, quantity, etc.)
 4. Viewing order estimation
 5. Confirming order placement
+
+### Text-based User Interface (TUI)
+
+For a more interactive experience, you can use the TUI mode:
+
+```
+./cvex --tui
+```
+
+Navigate the TUI using:
+- Arrow keys to move between items
+- Tab to cycle through fields
+- Enter to select options or submit forms
+- Esc to exit
+
+The TUI provides:
+- Dashboard with portfolio overview, positions, and orders
+- Markets view with contract details and price charts
+- Trading interface with orderbook and real-time price data
+- Configuration settings
 
 ## Trading Parameters
 
