@@ -166,9 +166,23 @@ const marketsTab = blessed.box({
   hidden: true
 });
 
-const marketsTable = grid.set(0, 0, 6, 12, contrib.table, {
+// Add information text
+blessed.text({
+  parent: marketsTab,
+  top: 0,
+  left: 'center',
+  content: 'Select a contract below and press Enter to view details',
+  style: {
+    fg: 'yellow',
+    bold: true
+  }
+});
+
+const marketsTable = grid.set(1, 0, 11, 12, contrib.table, {
   parent: marketsTab,
   keys: true,
+  vi: true,
+  mouse: true,
   fg: 'white',
   label: 'Available Contracts',
   columnSpacing: 3,
@@ -212,22 +226,24 @@ const tradingTab = blessed.box({
   hidden: true
 });
 
-const orderBookBox = grid.set(0, 0, 6, 4, contrib.table, {
+const orderBookBox = grid.set(0, 0, 6, 5, contrib.table, {
   parent: tradingTab,
   keys: true,
   fg: 'white',
+  interactive: true,
   label: 'Order Book',
   columnSpacing: 3,
   columnWidth: [15, 15, 15]
 });
 
-const tradesBox = grid.set(0, 4, 6, 8, contrib.table, {
+const tradesBox = grid.set(0, 5, 6, 7, contrib.table, {
   parent: tradingTab,
   keys: true,
   fg: 'white',
+  interactive: true,
   label: 'Recent Trades',
   columnSpacing: 3,
-  columnWidth: [20, 15, 20, 20, 10]
+  columnWidth: [20, 15, 15, 15, 10]
 });
 
 const orderFormBox = grid.set(6, 0, 6, 6, blessed.form, {
@@ -242,6 +258,7 @@ const orderResultBox = grid.set(6, 6, 6, 6, contrib.table, {
   parent: tradingTab,
   keys: true,
   fg: 'white',
+  interactive: true,
   label: 'Order Estimation',
   columnSpacing: 3,
   columnWidth: [25, 25]
@@ -557,9 +574,16 @@ const placeOrderButton = blessed.button({
 
 // Menu setup
 menu.setItems({
-  'Dashboard': function() { showTab('dashboard'); },
   'Markets': function() { showTab('markets'); },
-  'Trading': function() { showTab('trading'); },
+  'Contract Detail': function() { 
+    if (state.selectedContract) {
+      showTab('trading'); 
+    } else {
+      statusBar.setContent(' Please select a contract first');
+      screen.render();
+    }
+  },
+  'Dashboard': function() { showTab('dashboard'); },
   'Config': function() { showTab('config'); },
   'Refresh': function() { refreshData(); },
   'Quit': function() { process.exit(0); }
@@ -580,6 +604,13 @@ marketsTable.rows.on('select', function(item, index) {
   if (state.contracts[index]) {
     const contractId = state.contracts[index][0]; // ID is first column
     selectContract(contractId);
+    
+    // Automatically show contract details in trading tab after selection
+    setTimeout(() => {
+      showTab('trading');
+      statusBar.setContent(` Selected ${state.contracts[index][1]} - Press Enter on chart or tables to interact`);
+      screen.render();
+    }, 500);
   }
 });
 
@@ -829,9 +860,14 @@ async function refreshMarkets() {
       if (state.selectedContract) {
         await selectContract(state.selectedContract.contract_id);
       }
+      
+      // Focus on the markets table for easier navigation
+      marketsTable.focus();
+      
+      statusBar.setContent(' Markets data loaded. Use arrow keys to navigate, Enter to select a contract');
+    } else {
+      statusBar.setContent(' No contracts available');
     }
-
-    statusBar.setContent(' Markets data updated');
   } catch (error) {
     statusBar.setContent(` Error: ${error.message}`);
   }
@@ -881,15 +917,20 @@ async function selectContract(contractId) {
 
 async function updateMarketData(contractId) {
   try {
-    // Price history
-    const priceHistory = await apiRequest('GET', `/v1/market/futures/${contractId}/price?period=1h&count=24`);
+    // Run API requests in parallel to speed up loading
+    const [priceHistoryResponse, recentTradesResponse, orderBookResponse] = await Promise.all([
+      apiRequest('GET', `/v1/market/futures/${contractId}/price?period=1h&count=24`),
+      apiRequest('GET', `/v1/market/futures/${contractId}/latest-trades?count=10`),
+      apiRequest('GET', `/v1/market/futures/${contractId}/order-book?price_step=1`)
+    ]);
     
-    if (priceHistory && priceHistory.data) {
-      state.marketData.priceHistory = priceHistory.data;
+    // Process price history
+    if (priceHistoryResponse && priceHistoryResponse.data) {
+      state.marketData.priceHistory = priceHistoryResponse.data;
       
       // Update price chart
-      const times = priceHistory.data.map(item => new Date(item.time_open).getHours() + ':00');
-      const closePrices = priceHistory.data.map(item => parseFloat(item.price_close));
+      const times = priceHistoryResponse.data.map(item => new Date(item.time_open).getHours() + ':00');
+      const closePrices = priceHistoryResponse.data.map(item => parseFloat(item.price_close));
       
       priceChart.setData([{
         x: times,
@@ -898,19 +939,17 @@ async function updateMarketData(contractId) {
       }]);
     }
     
-    // Recent trades
-    const recentTrades = await apiRequest('GET', `/v1/market/futures/${contractId}/latest-trades?count=10`);
-    
-    if (recentTrades && recentTrades.trades) {
-      state.marketData.recentTrades = recentTrades.trades;
+    // Process recent trades
+    if (recentTradesResponse && recentTradesResponse.trades) {
+      state.marketData.recentTrades = recentTradesResponse.trades;
       
-      // Set trades table data
-      const tradesData = recentTrades.trades.map(trade => [
+      // Set trades table data with colored sides
+      const tradesData = recentTradesResponse.trades.map(trade => [
         new Date(trade.time).toLocaleString(),
         formatNumber(trade.last_price),
         formatNumber(trade.quantity_contracts),
         formatNumber(trade.quantity_base),
-        trade.taker_side
+        trade.taker_side.toUpperCase()
       ]);
       
       tradesBox.setData({
@@ -919,30 +958,28 @@ async function updateMarketData(contractId) {
       });
     }
     
-    // Order book
-    const orderBook = await apiRequest('GET', `/v1/market/futures/${contractId}/order-book?price_step=1`);
-    
-    if (orderBook && orderBook.asks && orderBook.bids) {
-      state.marketData.orderBook = orderBook;
+    // Process order book
+    if (orderBookResponse && orderBookResponse.asks && orderBookResponse.bids) {
+      state.marketData.orderBook = orderBookResponse;
       
       // Prepare order book data for visualization
-      const asksData = orderBook.asks.slice(0, 7).map(item => [
+      const asksData = orderBookResponse.asks.slice(0, 7).map(item => [
         formatNumber(item.price),
         formatNumber(item.quantity_contracts),
         formatNumber(item.quantity_base)
       ]);
       
-      const bidsData = orderBook.bids.slice(0, 7).map(item => [
+      const bidsData = orderBookResponse.bids.slice(0, 7).map(item => [
         formatNumber(item.price),
         formatNumber(item.quantity_contracts),
         formatNumber(item.quantity_base)
       ]);
       
-      // Combine and set order book data
+      // Combine and set order book data with clear separator
       const combinedData = [
         ['ASK PRICES', 'CONTRACTS', 'BASE'],
         ...asksData.reverse(),
-        ['---', '---', '---'],
+        ['-----', '-----', '-----'],
         ...bidsData
       ];
       
@@ -951,8 +988,11 @@ async function updateMarketData(contractId) {
         data: combinedData
       });
     }
+    
+    // All data is loaded
+    statusBar.setContent(` ${state.selectedContract.symbol} market data updated`);
   } catch (error) {
-    statusBar.setContent(` Error: ${error.message}`);
+    statusBar.setContent(` Error loading market data: ${error.message}`);
   }
   
   screen.render();
@@ -966,6 +1006,9 @@ async function refreshTrading() {
     return;
   }
   
+  statusBar.setContent(` Loading data for ${state.selectedContract.symbol}...`);
+  screen.render();
+  
   // Update order book and recent trades
   await updateMarketData(state.selectedContract.contract_id);
   
@@ -976,6 +1019,10 @@ async function refreshTrading() {
     state.orderForm.limitPrice = bestAsk.toString();
   }
   
+  // Set focus on the order book for easy navigation
+  orderBookBox.focus();
+  
+  statusBar.setContent(` ${state.selectedContract.symbol} - Use Tab to navigate between panels`);
   screen.render();
 }
 
@@ -1126,8 +1173,8 @@ async function apiRequest(method, endpoint, data = null, needsSignature = false)
   }
 }
 
-// Initialize with the dashboard tab
-showTab('config');
+// Initialize with the markets tab
+showTab('markets');
 
 // Start the CLI
 screen.render();
