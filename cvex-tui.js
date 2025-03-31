@@ -17,13 +17,19 @@ try {
   // Continue even if configuration fails - will prompt user to configure later
 }
 
+console.log('Initializing CVEX Trading Terminal...');
+
 // Create a screen object
 const screen = blessed.screen({
   smartCSR: true,
   title: 'CVEX Trading Terminal',
   dockBorders: true,
-  fullUnicode: true
+  fullUnicode: true,
+  debug: true,
+  log: true
 });
+
+console.log('Screen created successfully');
 
 // Global state
 let state = {
@@ -690,34 +696,46 @@ screen.key(['S-tab'], function() {
 // Functions
 
 function showTab(tabName) {
-  // Hide all tabs
-  dashboardTab.hide();
-  marketsTab.hide();
-  tradingTab.hide();
-  configTab.hide();
-
-  // Show the selected tab
-  switch(tabName) {
-    case 'dashboard':
-      dashboardTab.show();
-      refreshDashboard();
-      break;
-    case 'markets':
-      marketsTab.show();
-      refreshMarkets();
-      break;
-    case 'trading':
-      tradingTab.show();
-      refreshTrading();
-      break;
-    case 'config':
-      configTab.show();
-      loadConfigForm();
-      break;
+  console.log(`Switching to tab: ${tabName}`);
+  
+  try {
+    // Hide all tabs
+    dashboardTab.hide();
+    marketsTab.hide();
+    tradingTab.hide();
+    configTab.hide();
+    
+    // Show the selected tab
+    switch(tabName) {
+      case 'dashboard':
+        dashboardTab.show();
+        setTimeout(() => refreshDashboard(), 100);
+        break;
+      case 'markets':
+        marketsTab.show();
+        setTimeout(() => refreshMarkets(), 100);
+        break;
+      case 'trading':
+        tradingTab.show();
+        setTimeout(() => refreshTrading(), 100);
+        break;
+      case 'config':
+        configTab.show();
+        setTimeout(() => loadConfigForm(), 100);
+        break;
+      default:
+        console.log(`Unknown tab: ${tabName}`);
+        configTab.show(); // Default to config
+        setTimeout(() => loadConfigForm(), 100);
+    }
+    
+    state.currentTab = tabName;
+    screen.render();
+    console.log(`Tab switch to ${tabName} complete`);
+  } catch (error) {
+    console.error(`Error showing tab ${tabName}:`, error);
+    screen.render();
   }
-
-  state.currentTab = tabName;
-  screen.render();
 }
 
 async function refreshData() {
@@ -1199,14 +1217,25 @@ async function apiRequest(method, endpoint, data = null, needsSignature = false)
   }
 }
 
-// Initialize with the config tab if no configuration exists
-if (!getConfig().apiKey || !getConfig().privateKeyPath) {
-  statusBar.setContent(' No configuration found. Please configure your API credentials first.');
-  showTab('config');
-} else {
-  // Otherwise start with markets tab
-  showTab('markets');
-}
+// Ensure the UI is fully rendered first
+setTimeout(() => {
+  try {
+    console.log('Starting app initialization...');
+    // Initialize with the config tab if no configuration exists
+    if (!getConfig().apiKey || !getConfig().privateKeyPath) {
+      statusBar.setContent(' No configuration found. Please configure your API credentials first.');
+      showTab('config');
+    } else {
+      // Otherwise start with markets tab
+      showTab('markets');
+    }
+    console.log('Initial tab setup complete');
+  } catch (error) {
+    console.error('Error during app initialization:', error);
+    // Fallback to markets regardless of error
+    showTab('markets');
+  }
+}, 500);
 
 // Start the CLI
 screen.render();
