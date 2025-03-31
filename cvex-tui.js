@@ -9,7 +9,13 @@ const { getAccountInformation } = require('./actions/account');
 const { formatNumber } = require('./actions/utils');
 
 // Load configuration
-loadConfig();
+try {
+  loadConfig();
+  console.log('Configuration loaded successfully');
+} catch (error) {
+  console.error('Error loading configuration:', error.message);
+  // Continue even if configuration fails - will prompt user to configure later
+}
 
 // Create a screen object
 const screen = blessed.screen({
@@ -834,10 +840,17 @@ async function refreshMarkets() {
   screen.render();
 
   try {
+    // Check configuration first
+    if (!getConfig().apiKey) {
+      statusBar.setContent(' API configuration missing. Please set up your credentials in the Config tab.');
+      screen.render();
+      return;
+    }
+    
     // Fetch contracts list
     const result = await apiRequest('GET', '/v1/market/futures?active=true');
 
-    if (result && result.contracts) {
+    if (result && result.contracts && result.contracts.length > 0) {
       state.contracts = result.contracts;
 
       // Create table data
@@ -845,9 +858,9 @@ async function refreshMarkets() {
         contract.contract_id,
         contract.symbol,
         contract.index,
-        formatNumber(contract.last_price),
-        formatNumber(contract.mark_price),
-        formatNumber(contract.volume_24h)
+        formatNumber(contract.last_price || 0),
+        formatNumber(contract.mark_price || 0),
+        formatNumber(contract.volume_24h || 0)
       ]);
 
       // Set table data
@@ -867,9 +880,18 @@ async function refreshMarkets() {
       statusBar.setContent(' Markets data loaded. Use arrow keys to navigate, Enter to select a contract');
     } else {
       statusBar.setContent(' No contracts available');
+      marketsTable.setData({
+        headers: ['ID', 'Symbol', 'Index', 'Last Price', 'Mark Price', '24h Volume'],
+        data: [['No contracts available', '', '', '', '', '']]
+      });
     }
   } catch (error) {
-    statusBar.setContent(` Error: ${error.message}`);
+    console.error('Markets error:', error);
+    statusBar.setContent(` Error: ${error.message || 'Unknown error fetching markets'}`);
+    marketsTable.setData({
+      headers: ['ID', 'Symbol', 'Index', 'Last Price', 'Mark Price', '24h Volume'],
+      data: [['Error loading contracts', '', '', '', '', '']]
+    });
   }
 
   screen.render();
@@ -1163,18 +1185,28 @@ function saveCurrentConfig() {
 // Helper function to make API requests
 async function apiRequest(method, endpoint, data = null, needsSignature = false) {
   try {
+    console.log(`Making ${method} request to ${endpoint}`);
     // Use the same API request function from utils.js
-    const { apiRequest } = require('./actions/utils');
-    return await apiRequest(method, endpoint, data, needsSignature);
+    const { apiRequest: utilsApiRequest } = require('./actions/utils');
+    const result = await utilsApiRequest(method, endpoint, data, needsSignature);
+    console.log(`Request to ${endpoint} completed successfully`);
+    return result;
   } catch (error) {
+    console.error(`API Error (${method} ${endpoint}):`, error);
     statusBar.setContent(` API Error: ${error.message}`);
     screen.render();
     throw error;
   }
 }
 
-// Initialize with the markets tab
-showTab('markets');
+// Initialize with the config tab if no configuration exists
+if (!getConfig().apiKey || !getConfig().privateKeyPath) {
+  statusBar.setContent(' No configuration found. Please configure your API credentials first.');
+  showTab('config');
+} else {
+  // Otherwise start with markets tab
+  showTab('markets');
+}
 
 // Start the CLI
 screen.render();
