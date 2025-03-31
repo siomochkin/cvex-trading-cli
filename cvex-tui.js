@@ -38,7 +38,13 @@ const screen = blessed.screen({
 // State management
 let state = {
   selectedContract: null,
-  currentMarketIndex: 0
+  currentMarketIndex: 0,
+  orderForm: {
+    side: 'buy',
+    price: 0,
+    quantity: 1,
+    type: 'limit'
+  }
 };
 
 // Create layout
@@ -132,11 +138,21 @@ const orderBook = grid.set(7, 3, 5, 4, blessed.box, {
   parent: screen,
   label: 'Order Book',
   tags: true,
+  keys: true,
+  mouse: true,
+  clickable: true,
   style: {
     fg: 'white',
     bg: 'black',
     border: {
       fg: 'white'
+    },
+    selected: {
+      bg: 'blue',
+      fg: 'white'
+    },
+    hover: {
+      bg: 'gray'
     }
   },
   border: {
@@ -190,7 +206,7 @@ const statusBar = blessed.box({
   left: 0,
   right: 0,
   height: 1,
-  content: ' Press ↑/↓ to navigate, Enter to select, Q to quit',
+  content: ' Press ↑/↓ to navigate, Enter to select, Cmd+Enter for order estimate, Q to quit',
   style: {
     bg: 'blue',
     fg: 'white'
@@ -356,11 +372,276 @@ marketsList.focus();
 // Remove the explicit up/down handlers as they're conflicting
 // Let the native list control handle these events
 
-// Also handle enter directly
+// Also handle enter directly for market selection
 screen.key(['enter'], function() {
   if (marketsList.selected >= 0 && marketsList.selected < sampleContracts.length) {
     updateContractDetails(marketsList.selected);
   }
 });
+
+// Handle Cmd+Enter for order estimation
+screen.key(['C-enter'], function() {
+  if (state.selectedContract) {
+    showOrderEstimation();
+  }
+});
+
+// Function to show order estimation modal
+function showOrderEstimation() {
+  if (!state.selectedContract) {
+    statusBar.setContent(' Please select a contract first');
+    screen.render();
+    return;
+  }
+  
+  // Get current contract price based on order side
+  const basePrice = state.selectedContract.mark_price;
+  state.orderForm.price = basePrice;
+  
+  // Create a modal form for order input
+  const orderForm = blessed.form({
+    parent: screen,
+    top: 'center',
+    left: 'center',
+    width: 60,
+    height: 15,
+    border: 'line',
+    label: ' Order Estimation ',
+    tags: true,
+    keys: true,
+    mouse: true,
+    style: {
+      border: {
+        fg: 'white'
+      },
+      focus: {
+        border: {
+          fg: 'green'
+        }
+      }
+    }
+  });
+  
+  // Order side radio buttons
+  blessed.text({
+    parent: orderForm,
+    top: 1,
+    left: 2,
+    content: 'Side:'
+  });
+  
+  const buyRadio = blessed.radiobutton({
+    parent: orderForm,
+    top: 1,
+    left: 10,
+    content: 'Buy',
+    checked: state.orderForm.side === 'buy',
+    style: {
+      fg: 'green'
+    }
+  });
+  
+  const sellRadio = blessed.radiobutton({
+    parent: orderForm,
+    top: 1,
+    left: 25,
+    content: 'Sell',
+    checked: state.orderForm.side === 'sell',
+    style: {
+      fg: 'red'
+    }
+  });
+  
+  // Price input
+  blessed.text({
+    parent: orderForm,
+    top: 3,
+    left: 2,
+    content: 'Price:'
+  });
+  
+  const priceInput = blessed.textbox({
+    parent: orderForm,
+    top: 3,
+    left: 10,
+    width: 20,
+    height: 1,
+    inputOnFocus: true,
+    border: 'line',
+    style: {
+      fg: 'white',
+      bg: 'black',
+      focus: {
+        fg: 'white',
+        bg: 'blue'
+      }
+    }
+  });
+  
+  // Quantity input
+  blessed.text({
+    parent: orderForm,
+    top: 5,
+    left: 2,
+    content: 'Quantity:'
+  });
+  
+  const quantityInput = blessed.textbox({
+    parent: orderForm,
+    top: 5,
+    left: 10,
+    width: 20,
+    height: 1,
+    inputOnFocus: true,
+    border: 'line',
+    style: {
+      fg: 'white',
+      bg: 'black',
+      focus: {
+        fg: 'white',
+        bg: 'blue'
+      }
+    }
+  });
+  
+  // Estimate button
+  const estimateButton = blessed.button({
+    parent: orderForm,
+    top: 8,
+    left: 10,
+    width: 12,
+    height: 1,
+    content: 'Estimate',
+    style: {
+      bg: 'green',
+      fg: 'white',
+      focus: {
+        bg: 'blue'
+      },
+      hover: {
+        bg: 'blue'
+      }
+    }
+  });
+  
+  // Cancel button
+  const cancelButton = blessed.button({
+    parent: orderForm,
+    top: 8,
+    left: 30,
+    width: 12,
+    height: 1,
+    content: 'Cancel',
+    style: {
+      bg: 'red',
+      fg: 'white',
+      focus: {
+        bg: 'blue'
+      },
+      hover: {
+        bg: 'blue'
+      }
+    }
+  });
+  
+  // Set initial values
+  priceInput.setValue(state.orderForm.price.toString());
+  quantityInput.setValue(state.orderForm.quantity.toString());
+  
+  // Event handlers
+  buyRadio.on('check', function() {
+    state.orderForm.side = 'buy';
+    sellRadio.uncheck();
+  });
+  
+  sellRadio.on('check', function() {
+    state.orderForm.side = 'sell';
+    buyRadio.uncheck();
+  });
+  
+  estimateButton.on('press', function() {
+    state.orderForm.price = parseFloat(priceInput.value) || state.selectedContract.mark_price;
+    state.orderForm.quantity = parseInt(quantityInput.value) || 1;
+    
+    // Close the form
+    orderForm.detach();
+    
+    // Show estimation result
+    displayOrderEstimation();
+    
+    screen.render();
+  });
+  
+  cancelButton.on('press', function() {
+    orderForm.detach();
+    screen.render();
+  });
+  
+  // Set focus on the first input
+  priceInput.focus();
+  
+  screen.render();
+}
+
+// Function to display the order estimation result
+function displayOrderEstimation() {
+  // Create order estimation result modal
+  const estimationResult = blessed.box({
+    parent: screen,
+    top: 'center',
+    left: 'center',
+    width: 70,
+    height: 20,
+    border: 'line',
+    label: ` ${state.orderForm.side.toUpperCase()} Order Estimation `,
+    tags: true,
+    keys: true,
+    style: {
+      border: {
+        fg: state.orderForm.side === 'buy' ? 'green' : 'red'
+      }
+    },
+    padding: {
+      left: 2,
+      right: 2
+    }
+  });
+  
+  // Generate sample estimation data
+  const basePrice = state.orderForm.price || state.selectedContract.mark_price;
+  const quantity = state.orderForm.quantity || 1;
+  const totalValue = basePrice * quantity;
+  
+  // Calculate sample fees and values
+  const tradingFee = totalValue * 0.0005; // 0.05% trading fee
+  const platformFee = totalValue * 0.0001; // 0.01% platform fee
+  const totalFees = tradingFee + platformFee;
+  
+  // Display estimation details
+  let content = '';
+  content += `{bold}Contract:{/bold} ${state.selectedContract.symbol}\n`;
+  content += `{bold}Order Type:{/bold} ${state.orderForm.side.toUpperCase()} LIMIT\n`;
+  content += `{bold}Price:{/bold} ${formatNumber(basePrice)}\n`;
+  content += `{bold}Quantity:{/bold} ${quantity} contracts\n`;
+  content += `{bold}Order Value:{/bold} ${formatNumber(totalValue)}\n`;
+  content += `\n`;
+  content += `{bold}Trading Fee (0.05%):{/bold} ${formatNumber(tradingFee)}\n`;
+  content += `{bold}Platform Fee (0.01%):{/bold} ${formatNumber(platformFee)}\n`;
+  content += `{bold}Total Fees:{/bold} ${formatNumber(totalFees)}\n`;
+  content += `\n`;
+  content += `{bold}Total Cost:{/bold} ${formatNumber(totalValue + totalFees)}\n`;
+  content += `\n`;
+  content += `Press any key to close this window...`;
+  
+  estimationResult.setContent(content);
+  
+  // Close on any key
+  estimationResult.key(['escape', 'return', 'space', 'enter'], function() {
+    estimationResult.detach();
+    screen.render();
+  });
+  
+  screen.render();
+}
 
 screen.render();
