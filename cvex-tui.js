@@ -257,12 +257,12 @@ function updateContractDetails(index) {
   screen.render();
 }
 
-// Set up key bindings
-screen.key(['escape', 'q', 'C-c'], function() {
+// Set up key bindings - on the list itself to prevent conflict with list navigation
+marketsList.key(['escape', 'q', 'C-c'], function() {
   return process.exit(0);
 });
 
-screen.key(['r'], function() {
+marketsList.key(['r'], function() {
   statusBar.setContent(' Refreshing data...');
   screen.render();
   setTimeout(() => {
@@ -273,6 +273,11 @@ screen.key(['r'], function() {
     statusBar.setContent(' Data refreshed. Press ↑/↓ to navigate, Enter to select, Q to quit');
     screen.render();
   }, 500);
+});
+
+// Also add to screen for when list doesn't have focus
+screen.key(['escape', 'q', 'C-c'], function() {
+  return process.exit(0);
 });
 
 // Handle list selection
@@ -286,20 +291,8 @@ populateMarketsList();
 // Ensure markets list has focus
 marketsList.focus();
 
-// Add explicit key handlers for up/down
-screen.key(['up'], function() {
-  if (marketsList.selected > 0) {
-    marketsList.select(marketsList.selected - 1);
-    screen.render();
-  }
-});
-
-screen.key(['down'], function() {
-  if (marketsList.selected < marketsList.items.length - 1) {
-    marketsList.select(marketsList.selected + 1);
-    screen.render();
-  }
-});
+// Remove the explicit up/down handlers as they're conflicting
+// Let the native list control handle these events
 
 // Also handle enter directly
 screen.key(['enter'], function() {
