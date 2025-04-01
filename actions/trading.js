@@ -1,5 +1,6 @@
 // trading.js - Trading related actions
 const { apiRequest, formatNumber } = require('./utils');
+const { placeMultipleOrders } = require('./multiple-orders');
 
 // 5 & 6. Input Parameters and Get order estimate
 async function estimateOrder(contract, question) {
@@ -203,7 +204,9 @@ async function placeOrder(orderData, question) {
   }
 }
 
+// Remove the placeMultipleOrders function and keep only the exports
 module.exports = {
   estimateOrder,
-  placeOrder
+  placeOrder,
+  placeMultipleOrders
 };
