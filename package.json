@@ -5,7 +5,9 @@
     "main": "cvex-cli.js",
     "scripts": {
         "start": "node cvex-cli.js",
-        "tui": "node cvex-tui.js"
+        "tui": "node cvex-tui.js",
+        "test": "jest --verbose",
+        "test:watch": "jest --watch"
     },
     "keywords": [
         "cvex",
@@ -23,6 +25,10 @@
         "blessed-contrib": "^4.11.0",
         "commander": "^11.1.0",
         "neo-blessed": "^0.2.0"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "sinon": "^17.0.1"
     },
     "bin": {
         "cvex": "./cvex",
