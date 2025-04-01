@@ -6,7 +6,7 @@ const { program } = require('commander');
 // Import actions
 const { loadConfig, saveConfig, getConfig } = require('./actions/config');
 const { listContracts, getContractDetails, getMarketData, selectContract } = require('./actions/markets');
-const { estimateOrder, placeOrder } = require('./actions/trading');
+const { estimateOrder, placeOrder, placeMultipleOrders } = require('./actions/trading');
 const { getAccountInformation } = require('./actions/account');
 
 // Initialize CLI
@@ -156,9 +156,34 @@ program
         console.log('Order estimation failed or cancelled.');
         return;
       }
+
+      // Ask for number of orders
+      let numOrders;
+      while (true) {
+        const input = await question('How many orders do you want to submit? (1 for single order): ');
+        numOrders = parseInt(input);
+        if (!isNaN(numOrders) && numOrders > 0) break;
+        console.log('Invalid input. Please enter a positive number.');
+      }
       
-      // Place the order if confirmed
-      await placeOrder(orderData, question);
+      // Place the order(s)
+      if (numOrders === 1) {
+        await placeOrder(orderData, question);
+      } else {
+        // Ask for frequency
+        let frequency;
+        while (true) {
+          const input = await question('How many orders per second? (default: 10): ');
+          if (input === '') {
+            frequency = 10;
+            break;
+          }
+          frequency = parseFloat(input);
+          if (!isNaN(frequency) && frequency > 0) break;
+          console.log('Invalid input. Please enter a positive number.');
+        }
+        await placeMultipleOrders(orderData, numOrders, frequency, question);
+      }
     } finally {
       rl.close();
     }
@@ -180,5 +205,6 @@ module.exports = {
   getMarketData,
   getAccountInformation,
   estimateOrder,
-  placeOrder
+  placeOrder,
+  placeMultipleOrders
 };
