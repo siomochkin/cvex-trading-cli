@@ -152,38 +152,8 @@ async function getContractDetails(contractId) {
   }
 }
 
-// 4. Select Contract
-async function selectContract(question) {
-  const contracts = await listContracts();
-  if (contracts.length === 0) return null;
-  
-  let contractId;
-  while (true) {
-    const input = await question('\nEnter contract ID or symbol to select (or "q" to quit): ');
-    if (input.toLowerCase() === 'q') return null;
-    
-    const contract = contracts.find(c => 
-      c.contract_id.toString() === input || c.symbol.toLowerCase() === input.toLowerCase()
-    );
-    
-    if (contract) {
-      contractId = contract.contract_id;
-      console.log(`Selected contract: ${contract.symbol} (ID: ${contractId})`);
-      
-      // Get detailed contract information
-      const contractDetails = await getContractDetails(contractId);
-      await getMarketData(contractId);
-      
-      return contractDetails;
-    } else {
-      console.log('Invalid contract ID or symbol. Please try again.');
-    }
-  }
-}
-
 module.exports = {
   listContracts,
-  getMarketData,
   getContractDetails,
-  selectContract
+  getMarketData
 };

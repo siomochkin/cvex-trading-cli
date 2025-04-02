@@ -103,6 +103,33 @@ async function getAccountInformation() {
   }
 }
 
+// Get user positions
+async function getPositions() {
+  try {
+    console.log('Fetching positions...');
+    const positions = await apiRequest('GET', '/v1/trading/positions');
+    return positions;
+  } catch (error) {
+    console.error('Error fetching positions:', error.message);
+    return [];
+  }
+}
+
+// Get portfolio details
+async function getPortfolio() {
+  try {
+    console.log('Getting portfolio overview...');
+    const portfolio = await apiRequest('GET', '/v1/trading/portfolio');
+    return portfolio;
+  } catch (error) {
+    console.error('Error fetching portfolio:', error.message);
+    return null;
+  }
+}
+
+// Export all functions
 module.exports = {
-  getAccountInformation
+  getAccountInformation,
+  getPositions,
+  getPortfolio
 };

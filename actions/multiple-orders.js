@@ -1,16 +1,41 @@
 const { apiRequest } = require('./utils');
+const fs = require('fs');
+const path = require('path');
+
+// Function to create log file name with timestamp
+function getLogFileName() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return path.join(process.cwd(), `multiple-orders-${timestamp}.log`);
+}
+
+// Function to write to log file
+function appendToLog(logFile, message) {
+  fs.appendFileSync(logFile, message + '\n');
+}
 
 // Function to submit multiple orders with delay
-async function placeMultipleOrders(orderData, numOrders, frequency, question) {
+async function placeMultipleOrders(orderData, numOrders, frequency, question, skipConfirmation = false) {
   try {
     if (!orderData || !orderData.orderParams) {
       console.log('No order parameters available.');
       return;
     }
 
-    // Ask for confirmation before proceeding
-    const confirm = await question(`\nDo you want to submit ${numOrders} orders at ${frequency} orders/second? (yes/no): `);
-    if (confirm.toLowerCase() !== 'yes' && confirm.toLowerCase() !== 'y') {
+    // Create log file
+    const logFile = getLogFileName();
+    appendToLog(logFile, '='.repeat(50));
+    appendToLog(logFile, `Multiple Orders Execution Log - ${new Date().toISOString()}`);
+    appendToLog(logFile, '='.repeat(50));
+    appendToLog(logFile, `\nTarget: ${numOrders} orders at ${frequency} orders/second\n`);
+
+    // Ask for confirmation before proceeding (unless skipConfirmation is true)
+    let confirmed = skipConfirmation;
+    if (!skipConfirmation) {
+      const confirm = await question(`\nDo you want to submit ${numOrders} orders at ${frequency} orders/second? (yes/no): `);
+      confirmed = confirm.toLowerCase() === 'yes' || confirm.toLowerCase() === 'y';
+    }
+    
+    if (!confirmed) {
       console.log('Multiple order submission cancelled by user.');
       return;
     }
@@ -42,7 +67,8 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question) {
       startTime: Date.now(),
       lastOrderTime: null,
       targetFrequency: frequency,
-      actualFrequency: 0
+      actualFrequency: 0,
+      failedOrders: [] // Track failed orders details
     };
 
     // Array to store all order promises
@@ -78,44 +104,126 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question) {
               }
             } else {
               stats.otherErrors++;
-              console.log(`Status: ${result.status || 'error'}`);
-              if (result.message) console.log(`Message: ${result.message}`);
-              if (result.code) console.log(`Code: ${result.code}`);
+              const errorLog = {
+                orderId: orderParams.customer_order_id,
+                timestamp: new Date().toISOString(),
+                error: 'Order submission failed',
+                status: result.status,
+                message: result.message,
+                code: result.code,
+                traceId: result.headers?.['trace-id'] || 'N/A'
+              };
+              stats.failedOrders.push(errorLog);
+              appendToLog(logFile, `\nFailed Order:\n${JSON.stringify(errorLog, null, 2)}`);
             }
           }
         })
         .catch(error => {
           stats.lastOrderTime = Date.now();
+          
           const errorMessage = error.message || '';
-          const statusCode = errorMessage.match(/status code (\d+)/)?.[1];
+          const statusCode = error.status || error.response?.status || errorMessage.match(/status code (\d+)/)?.[1];
+          
+          // Get trace ID from the correct header name with more variations
+          let traceId = 'N/A';
+          const headerNames = ['trace-id', 'x-trace-id', 'x-request-id', 'traceid', 'requestid'];
+          
+          // Check headers directly attached to error
+          if (error.headers) {
+            for (const headerName of headerNames) {
+              if (error.headers[headerName]) {
+                traceId = error.headers[headerName];
+                console.log(`Found trace ID in error.headers['${headerName}']: ${traceId}`);
+                break;
+              }
+            }
+          }
+          
+          // Check response headers
+          if (traceId === 'N/A' && error.response?.headers) {
+            for (const headerName of headerNames) {
+              if (error.response.headers[headerName]) {
+                traceId = error.response.headers[headerName];
+                console.log(`Found trace ID in error.response.headers['${headerName}']: ${traceId}`);
+                break;
+              }
+            }
+            
+            // If still not found, log all header keys to help debug
+            if (traceId === 'N/A') {
+              const allHeaderKeys = Object.keys(error.response.headers).join(', ');
+              console.log(`All response header keys: ${allHeaderKeys}`);
+            }
+          }
+          
+          // For 5xx errors, check if trace ID is in the response body
+          if (traceId === 'N/A' && statusCode >= 500 && error.response?.data) {
+            try {
+              const responseBody = error.response.data;
+              
+              // If responseBody is HTML (like from Cloudflare errors), try to extract ID
+              if (typeof responseBody === 'string' && responseBody.includes('Cloudflare')) {
+                // Try to extract Cloudflare Ray ID as a fallback
+                const rayIdMatch = responseBody.match(/Ray ID: <strong[^>]*>([^<]+)<\/strong>/);
+                if (rayIdMatch && rayIdMatch[1]) {
+                  traceId = `CF-Ray-${rayIdMatch[1]}`;
+                  console.log(`Extracted Cloudflare Ray ID as trace ID: ${traceId}`);
+                }
+              } 
+              // If responseBody is an object, look for common trace ID field names
+              else if (typeof responseBody === 'object') {
+                const possibleTraceIdFields = ['trace_id', 'traceId', 'request_id', 'requestId', 'id', 'error_id'];
+                for (const field of possibleTraceIdFields) {
+                  if (responseBody[field]) {
+                    traceId = responseBody[field];
+                    console.log(`Found trace ID in response body field '${field}': ${traceId}`);
+                    break;
+                  }
+                }
+              }
+            } catch (parseError) {
+              console.error(`Could not parse error response body: ${parseError.message}`);
+            }
+          }
 
+          // Create a more detailed error log
+          const errorLog = {
+            orderId: orderParams.customer_order_id,
+            timestamp: new Date().toISOString(),
+            statusCode,
+            error: errorMessage,
+            traceId,
+            responseData: error.response?.data ? JSON.stringify(error.response.data).substring(0, 500) : 'No response data'
+          };
+
+          // Determine error type
           if (errorMessage.includes('429')) {
             stats.rateLimited++;
-            console.error(`Rate limit hit for order ${i + 1}. Waiting before retry...`);
-            // Add extra delay on rate limit
-            return delay(1000).then(() => {
-              console.log(`Retrying order ${i + 1} after rate limit...`);
-              return apiRequest('POST', '/v1/trading/order', orderParams, true);
-            });
+            errorLog.type = 'Rate Limited';
           } else if (errorMessage.includes('524')) {
             stats.serverErrors['524']++;
-            console.error(`Timeout error for order ${i + 1}. Server took too long to respond.`);
+            errorLog.type = 'Timeout Error';
           } else if (errorMessage.includes('503')) {
             stats.serverErrors['503']++;
-            console.error(`Service temporarily unavailable for order ${i + 1}. Server is overloaded.`);
+            errorLog.type = 'Service Unavailable';
           } else if (errorMessage.includes('502')) {
             stats.serverErrors['502']++;
-            console.error(`Bad gateway error for order ${i + 1}. Server is not responding correctly.`);
+            errorLog.type = 'Bad Gateway';
           } else if (errorMessage.includes('500')) {
             stats.serverErrors['500']++;
-            console.error(`Internal server error for order ${i + 1}. Server encountered an error.`);
+            errorLog.type = 'Internal Server Error';
           } else if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ECONNRESET')) {
             stats.networkErrors++;
-            console.error(`Network error for order ${i + 1}. Connection issues detected.`);
+            errorLog.type = 'Network Error';
           } else {
             stats.serverErrors.other++;
-            console.error(`Error in order ${i + 1}:`, errorMessage);
+            errorLog.type = 'Other Error';
           }
+
+          stats.failedOrders.push(errorLog);
+          appendToLog(logFile, `\nFailed Order:\n${JSON.stringify(errorLog, null, 2)}`);
+
+          console.error(`Error in order ${i + 1}:`, errorMessage);
         });
 
       // Add the promise to our array
@@ -136,7 +244,28 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question) {
     stats.actualFrequency = stats.successful / duration;
     const successRate = (stats.successful / stats.total) * 100;
 
-    // Print summary
+    // Log summary
+    const summary = {
+      totalOrders: stats.total,
+      successfulOrders: stats.successful,
+      rateLimitedOrders: stats.rateLimited,
+      serverErrors: stats.serverErrors,
+      networkErrors: stats.networkErrors,
+      otherErrors: stats.otherErrors,
+      successRate: `${successRate.toFixed(2)}%`,
+      targetFrequency: `${stats.targetFrequency} orders/second`,
+      actualFrequency: `${stats.actualFrequency.toFixed(2)} orders/second`,
+      totalDuration: `${duration.toFixed(2)} seconds`,
+      totalFailedOrders: stats.failedOrders.length
+    };
+
+    appendToLog(logFile, '\n' + '='.repeat(50));
+    appendToLog(logFile, 'EXECUTION SUMMARY');
+    appendToLog(logFile, '='.repeat(50));
+    appendToLog(logFile, JSON.stringify(summary, null, 2));
+    appendToLog(logFile, '\n' + '='.repeat(50));
+
+    // Print summary to console
     console.log('\n' + '='.repeat(50));
     console.log('ORDER SUBMISSION SUMMARY');
     console.log('='.repeat(50));
@@ -156,6 +285,7 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question) {
     console.log(`Actual Frequency: ${stats.actualFrequency.toFixed(2)} orders/second`);
     console.log(`Total Duration: ${duration.toFixed(2)} seconds`);
     console.log('='.repeat(50));
+    console.log(`\nDetailed log file has been created: ${logFile}`);
   } catch (error) {
     console.error('Error placing multiple orders:', error.message);
   }

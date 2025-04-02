@@ -29,6 +29,8 @@ config.json
 # Logs
 logs/
 *.log
+debug-logs/
+multiple-orders-*.log
 
 # Build and distribution
 dist/
