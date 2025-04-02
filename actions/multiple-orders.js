@@ -78,13 +78,18 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question, sk
     for (let i = 0; i < numOrders; i++) {
       console.log(`\nSubmitting order ${i + 1} of ${numOrders}...`);
       
+      // Get current GMT timestamp in milliseconds
+      const currentGMTTimestamp = Date.now();
+      
       // Create order parameters with unique customer_order_id
       const orderParams = {
         ...orderData.orderParams,
-        customer_order_id: `cli-${Date.now()}-${i}`,
-        timestamp: Date.now(),
+        customer_order_id: `cli-${currentGMTTimestamp}-${i}`,
+        timestamp: currentGMTTimestamp,
         recv_window: 30000
       };
+
+      console.log(`Using GMT timestamp: ${currentGMTTimestamp} (${new Date(currentGMTTimestamp).toISOString()})`);
 
       // Submit the order without awaiting the response
       const orderPromise = apiRequest('POST', '/v1/trading/order', orderParams, true)
