@@ -13,6 +13,62 @@ function appendToLog(logFile, message) {
   fs.appendFileSync(logFile, message + '\n');
 }
 
+// Function to estimate an order before submission
+async function estimateOrderBeforeSubmission(orderParams) {
+  try {
+    // Create estimation payload from order parameters
+    const estimatePayload = {
+      contract: orderParams.contract,
+      type: orderParams.type,
+      limit_price: orderParams.limit_price,
+      time_in_force: orderParams.time_in_force,
+      reduce_only: orderParams.reduce_only,
+      quantity_steps: orderParams.quantity_steps,
+      quantity_contracts: orderParams.quantity_contracts || '',
+      quantity_assets: orderParams.quantity_assets || ''
+    };
+    
+    console.log('\nEstimating order with parameters:');
+    console.log(JSON.stringify(estimatePayload, null, 2));
+    
+    // Make the estimation request
+    const estimationResult = await apiRequest('POST', '/v1/trading/estimate-order', estimatePayload);
+    
+    if (estimationResult && !estimationResult.error) {
+      console.log('\nOrder Estimation Result:');
+      console.log('-'.repeat(50));
+      console.log(`Trading Fee: ${estimationResult.trading_fee}`);
+      console.log(`Operational Fee: ${estimationResult.operational_fee}`);
+      console.log(`Current Equity: ${estimationResult.current_equity}`);
+      console.log(`New Equity: ${estimationResult.new_equity}`);
+      console.log(`Est. Liquidation Price: ${estimationResult.estimated_liquidation_price}`);
+      console.log('-'.repeat(50));
+      
+      return {
+        success: true,
+        estimationResult,
+        orderParams: {
+          ...orderParams,
+          timestamp: Date.now(),  // Update timestamp to current time
+          recv_window: 30000
+        }
+      };
+    } else {
+      console.log(`Error in estimation: ${estimationResult?.error || 'Unknown error'}`);
+      return {
+        success: false,
+        error: estimationResult?.error || 'Unknown estimation error'
+      };
+    }
+  } catch (error) {
+    console.error('Error estimating order:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 // Function to submit multiple orders with delay
 async function placeMultipleOrders(orderData, numOrders, frequency, question, skipConfirmation = false) {
   try {
@@ -53,6 +109,7 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question, sk
     // Statistics tracking
     const stats = {
       total: numOrders,
+      totalRequestsSent: 0,
       successful: 0,
       rateLimited: 0,
       serverErrors: {
@@ -86,8 +143,31 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question, sk
         recv_window: 30000
       };
 
-      // Submit the order without awaiting the response
-      const orderPromise = apiRequest('POST', '/v1/trading/order', orderParams, true)
+      // First estimate the order - track this as a request sent
+      stats.totalRequestsSent++;
+      const estimationResult = await estimateOrderBeforeSubmission(orderParams);
+      
+      if (!estimationResult.success) {
+        console.error(`Order estimation failed for order ${i + 1}: ${estimationResult.error}`);
+        stats.otherErrors++;
+        const errorLog = {
+          orderId: orderParams.customer_order_id,
+          timestamp: new Date().toISOString(),
+          error: 'Order estimation failed',
+          message: estimationResult.error,
+          stage: 'estimation'
+        };
+        stats.failedOrders.push(errorLog);
+        appendToLog(logFile, `\nFailed Order Estimation:\n${JSON.stringify(errorLog, null, 2)}`);
+        continue;  // Skip to next order
+      }
+      
+      // Use the updated parameters from the estimation result
+      const updatedOrderParams = estimationResult.orderParams;
+
+      // Submit the order with fresh parameters - track this as another request sent
+      stats.totalRequestsSent++;
+      const orderPromise = apiRequest('POST', '/v1/trading/order', updatedOrderParams, true)
         .then(result => {
           stats.lastOrderTime = Date.now();
           if (result) {
@@ -105,7 +185,7 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question, sk
             } else {
               stats.otherErrors++;
               const errorLog = {
-                orderId: orderParams.customer_order_id,
+                orderId: updatedOrderParams.customer_order_id,
                 timestamp: new Date().toISOString(),
                 error: 'Order submission failed',
                 status: result.status,
@@ -188,7 +268,7 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question, sk
 
           // Create a more detailed error log
           const errorLog = {
-            orderId: orderParams.customer_order_id,
+            orderId: updatedOrderParams.customer_order_id,
             timestamp: new Date().toISOString(),
             statusCode,
             error: errorMessage,
@@ -247,6 +327,7 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question, sk
     // Log summary
     const summary = {
       totalOrders: stats.total,
+      totalRequestsSent: stats.totalRequestsSent,
       successfulOrders: stats.successful,
       rateLimitedOrders: stats.rateLimited,
       serverErrors: stats.serverErrors,
@@ -270,6 +351,7 @@ async function placeMultipleOrders(orderData, numOrders, frequency, question, sk
     console.log('ORDER SUBMISSION SUMMARY');
     console.log('='.repeat(50));
     console.log(`Total Orders Attempted: ${stats.total}`);
+    console.log(`Total Requests Sent: ${stats.totalRequestsSent}`);
     console.log(`Successful Orders: ${stats.successful}`);
     console.log(`Rate Limited Orders: ${stats.rateLimited}`);
     console.log('\nServer Errors:');
