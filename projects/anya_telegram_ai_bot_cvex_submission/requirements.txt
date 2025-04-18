@@ -1,0 +1,7 @@
+# Core dependencies for Anya Trading Bot
+python-telegram-bot[webhooks]==20.6  # Telegram bot with webhook support
+openai==1.10.0                      # OpenAI API for Anya's AI smarts
+requests==2.31.0                    # HTTP requests for CVEX API calls
+python-dotenv==1.0.0                # Load environment variables from .env
+cryptography==42.0.5                # Encryption for trading keys (Fernet)
+
